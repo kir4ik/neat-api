@@ -12,23 +12,28 @@ async fn main() {
     let store_filter = warp::any().map(move || store.clone());
 
     let add_items = warp::post()
-        .and(warp::path("v1"))
-        .and(warp::path("groceries"))
         .and(warp::path::end())
         .and(json_body())
         .and(store_filter.clone())
         .and_then(add_grocery_list_item);
 
     let get_items = warp::get()
-        .and(warp::path("v1"))
-        .and(warp::path("groceries"))
         .and(warp::path::end())
         .and(store_filter.clone())
         .and_then(get_grocery_list);
 
-    let routes = add_items.or(get_items);
+    let del_item = warp::delete()
+        .and(warp::path!(String))
+        .and(store_filter.clone())
+        .and_then(del_grocery_list);
 
-    warp::serve(routes).run(([127, 0, 0, 1], 3030)).await;
+    let groceries_routes = warp::path("v1")
+        .and(warp::path("groceries"))
+        .and(add_items.or(get_items).or(del_item));
+
+    warp::serve(groceries_routes)
+        .run(([127, 0, 0, 1], 3030))
+        .await;
 }
 
 fn json_body() -> impl Filter<Extract = (Item,), Error = warp::Rejection> + Clone {
@@ -56,6 +61,15 @@ async fn get_grocery_list(store: Store) -> Result<impl warp::Reply, warp::Reject
     }
 
     Ok(warp::reply::json(&result))
+}
+
+async fn del_grocery_list(id: String, store: Store) -> Result<impl warp::Reply, warp::Rejection> {
+    store.grocery_list.write().remove(&id);
+
+    Ok(warp::reply::with_status(
+        format!("Removed item {}", id),
+        http::StatusCode::OK,
+    ))
 }
 
 type Items = HashMap<String, i32>;
